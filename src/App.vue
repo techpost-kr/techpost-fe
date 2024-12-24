@@ -1,0 +1,108 @@
+<template>
+  <div id="app">
+    <div class="header-container">
+      <HeaderView v-show="isShowHeader" />
+    </div>
+
+    <!-- 콘텐츠 컨테이너에서 패딩을 조건부로 설정 -->
+    <div :class="['content-container', { 'has-header': isShowHeader }]">
+      <RouterView />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import HeaderView from '@/components/layout/HeaderView.vue'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+
+// 헤더를 숨길 페이지 목록
+const hideHeaderRoutes = ['login', 'signup', 'terms'];
+
+const route = useRoute();
+
+// 현재 라우트 이름이 목록에 없을 때만 헤더를 표시
+const isShowHeader = computed(() => !hideHeaderRoutes.includes(route.name as string))
+</script>
+
+<style scoped>
+header {
+  line-height: 1.5;
+  max-height: 100vh;
+}
+
+.header-container {
+  position: fixed; /* 고정 위치 */
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px; /* 헤더 높이 */
+  z-index: 1000; /* 다른 요소 위에 오도록 설정 */
+}
+
+.content-container {
+  /* 기본 패딩 없음 */
+}
+
+/* 헤더가 있을 때만 패딩 적용 */
+.content-container.has-header {
+  padding-top: 80px; /* 헤더 높이만큼 패딩 추가 */
+}
+
+.logo {
+  display: block;
+  margin: 0 auto 2rem;
+}
+
+nav {
+  width: 100%;
+  font-size: 12px;
+  text-align: center;
+  margin-top: 2rem;
+}
+
+nav a.router-link-exact-active {
+  color: var(--color-text);
+}
+
+nav a.router-link-exact-active:hover {
+  background-color: transparent;
+}
+
+nav a {
+  display: inline-block;
+  padding: 0 1rem;
+  border-left: 1px solid var(--color-border);
+}
+
+nav a:first-of-type {
+  border: 0;
+}
+
+@media (min-width: 1024px) {
+  header {
+    display: flex;
+    place-items: center;
+    padding-right: calc(var(--section-gap) / 2);
+  }
+
+  .logo {
+    margin: 0 2rem 0 0;
+  }
+
+  header .wrapper {
+    display: flex;
+    place-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  nav {
+    text-align: left;
+    margin-left: -1rem;
+    font-size: 1rem;
+
+    padding: 1rem 0;
+    margin-top: 1rem;
+  }
+}
+</style>
