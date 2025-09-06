@@ -1,0 +1,32 @@
+name: Frontend Pipeline
+
+on:
+  workflow_dispatch:
+#  push:
+#    branches: [ master, develop ]
+#  pull_request:
+#    branches: [ master, develop ]
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      project: techpost
+      module: frontend
+      profiles_active: prod
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  deploy:
+    needs: build
+#    if: github.ref == 'refs/heads/master'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      project: techpost
+      module: frontend
+      port: 80
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      AWS_EC2_HOST: ${{ secrets.AWS_EC2_HOST }}
+      AWS_EC2_SSH_KEY: ${{ secrets.AWS_EC2_SSH_KEY }}
