@@ -12,13 +12,23 @@
               <div class="company-info">
                 <img :src="getCompanyLogo(post.techBlogEnum)" alt="Company Logo" class="company-logo" />
                 <span class="card-company">{{ post.techBlogEnum }}</span>
-                <time class="card-date">{{ formatDate(post.publishedDateTime) }}</time>
+                <div class="date-section">
+                  <button class="summary-btn" @click="openSummaryDialog(post)">요약본 보기</button>
+                  <time class="card-date">{{ formatDate(post.publishedDateTime) }}</time>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Summary Dialog -->
+    <SummaryDialog
+      :isVisible="showSummaryDialog"
+      :post="selectedPost"
+      @close="closeSummaryDialog"
+    />
   </div>
 </template>
 
@@ -29,18 +39,25 @@ import { formatDate } from '@/common/utils/dateUtils';
 import eventBus from '@/common/eventBus';
 import kakaoLogo from '@/assets/company/logo/kakao.png';
 import naverLogo from '@/assets/company/logo/naver.png';
+import SummaryDialog from '@/components/SummaryDialog.vue';
+import type { Post } from '@/types/Post';
 
 export default defineComponent({
   name: 'TechBlogPost',
+  components: {
+    SummaryDialog
+  },
   methods: { formatDate },
   setup() {
-    const posts = ref<any[]>([]);
+    const posts = ref<Post[]>([]);
     const loading = ref(true);
     const currentPage = ref(1);
     const pageSize = ref(100);
     const totalPages = ref(0);
     const searchQuery = ref('');
     const isFetching = ref(false);
+    const showSummaryDialog = ref(false);
+    const selectedPost = ref<Post>({} as Post);
 
     const handleScroll = () => {
       const scrollPosition = window.innerHeight + window.scrollY;
@@ -102,10 +119,28 @@ export default defineComponent({
         KAKAO: kakaoLogo,
         NAVER: naverLogo,
       };
-      return logoMap[techBlogEnum] || '@/assets/log.svg';
+      return logoMap[techBlogEnum] || '@/assets/logo.svg';
     };
 
-    return { posts, loading, getCompanyLogo };
+    const openSummaryDialog = (post: Post) => {
+      selectedPost.value = post;
+      showSummaryDialog.value = true;
+    };
+
+    const closeSummaryDialog = () => {
+      showSummaryDialog.value = false;
+      selectedPost.value = {} as Post;
+    };
+
+    return {
+      posts,
+      loading,
+      getCompanyLogo,
+      showSummaryDialog,
+      selectedPost,
+      openSummaryDialog,
+      closeSummaryDialog
+    };
   },
 });
 </script>
@@ -184,10 +219,32 @@ export default defineComponent({
   letter-spacing: 0; /* 글자 간격 조정 */
 }
 
+.date-section {
+  display: flex;
+  align-items: center;
+  gap: 15px; /* 요약본 보기 버튼과 날짜 사이 간격 */
+  margin-left: auto; /* 우측 정렬 */
+}
+
+.summary-btn {
+  background-color: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.summary-btn:hover {
+  background-color: #4b5563;
+}
+
 .card-date {
   font-size: 1em; /* 날짜 크기 조정 */
   color: #666;
-  margin-left: auto; /* 날짜를 우측으로 정렬 */
   letter-spacing: 0; /* 글자 간격 조정 */
 }
 
@@ -211,6 +268,17 @@ export default defineComponent({
 
   .card-company {
     font-size: 0.85em;
+  }
+
+  .date-section {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .summary-btn {
+    font-size: 0.8em;
+    padding: 5px 10px;
   }
 
   .card-date {
