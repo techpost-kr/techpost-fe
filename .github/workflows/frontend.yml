@@ -25,7 +25,7 @@ jobs:
     with:
       project: techpost
       module: frontend
-      port: 443
+      port: 5173
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       AWS_EC2_HOST: ${{ secrets.AWS_EC2_HOST }}

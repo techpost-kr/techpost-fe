@@ -22,14 +22,17 @@ FROM nginx:alpine AS production-stage
 COPY --from=build-stage /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration
-COPY nginx /etc/nginx
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
+
+# 기본 제공되는 default.conf 삭제 (중복 방지)
+RUN rm /etc/nginx/conf.d/default.conf
 
 # Create nginx user and set permissions
 RUN chown -R nginx:nginx /usr/share/nginx/html && \
     chmod -R 755 /usr/share/nginx/html
 
 # Expose ports
-EXPOSE 80 443
+EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
