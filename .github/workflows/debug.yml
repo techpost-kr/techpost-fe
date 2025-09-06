@@ -1,0 +1,137 @@
+name: Frontend Pipeline with Debug
+
+on:
+  workflow_dispatch:
+    inputs:
+      debug_mode:
+        description: 'Enable debug mode'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      build_env:
+        description: 'Build environment'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - 'dev'
+          - 'staging'
+          - 'prod'
+#  push:
+#    branches: [ master, develop ]
+#  pull_request:
+#    branches: [ master, develop ]
+
+jobs:
+  debug:
+    if: ${{ github.event.inputs.debug_mode == 'true' || github.event_name != 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🔍 Debug Environment
+        run: |
+          echo "=== GitHub Context ==="
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "SHA: ${{ github.sha }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Run Number: ${{ github.run_number }}"
+          
+          echo ""
+          echo "=== Inputs ==="
+          echo "Debug Mode: ${{ github.event.inputs.debug_mode }}"
+          echo "Build Env: ${{ github.event.inputs.build_env }}"
+          
+          echo ""
+          echo "=== Secrets Availability Check ==="
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
+            echo "✅ DOCKERHUB_USERNAME: Available (length: ${#DOCKERHUB_USERNAME})"
+            echo "   First 3 chars: ${DOCKERHUB_USERNAME:0:3}***"
+          else
+            echo "❌ DOCKERHUB_USERNAME: Not available"
+          fi
+          
+          if [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "✅ DOCKERHUB_TOKEN: Available (length: ${#DOCKERHUB_TOKEN})"
+            echo "   First 4 chars: ${DOCKERHUB_TOKEN:0:4}***"
+          else
+            echo "❌ DOCKERHUB_TOKEN: Not available"
+          fi
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🐳 Test Docker Login (Dry Run)
+        if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN }}
+        run: |
+          echo "Testing Docker Hub connectivity..."
+          echo "Username: ${{ secrets.DOCKERHUB_USERNAME }}"
+          
+          # Test without actual login
+          echo "Attempting to ping Docker Hub..."
+          curl -s https://registry-1.docker.io/v2/ || echo "Docker Hub ping failed"
+          
+          echo ""
+          echo "Docker version:"
+          docker version
+          
+          echo ""
+          echo "Testing login format (will not actually login):"
+          echo "Command that will be executed:"
+          echo "docker login -u \"${{ secrets.DOCKERHUB_USERNAME }}\" --password-stdin"
+
+      - name: 🔧 System Information
+        run: |
+          echo "=== System Information ==="
+          echo "OS: $(uname -a)"
+          echo "Docker: $(docker --version)"
+          echo "Available disk space:"
+          df -h
+          echo ""
+          echo "Network connectivity test:"
+          ping -c 3 registry-1.docker.io || echo "Ping to Docker Hub failed"
+
+  build:
+    needs: debug
+    if: always() && !cancelled()
+    uses: ./.github/workflows/build.yml
+    with:
+      project: techpost
+      module: frontend
+      profiles_active: ${{ github.event.inputs.build_env || 'prod' }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  post-build-debug:
+    if: always() && (github.event.inputs.debug_mode == 'true' || github.event_name != 'workflow_dispatch')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📊 Build Results Summary
+        run: |
+          echo "=== Build Results ==="
+          echo "Build job status: ${{ needs.build.result }}"
+          echo "Build job conclusion: ${{ needs.build.conclusion }}"
+          
+          if [ "${{ needs.build.result }}" = "failure" ]; then
+            echo "❌ Build failed! Check the logs above for details."
+            echo ""
+            echo "Common issues to check:"
+            echo "1. Docker Hub credentials are correct"
+            echo "2. Repository has access to organization secrets"
+            echo "3. Docker Hub token has sufficient permissions"
+            echo "4. Dockerfile exists and is valid"
+            echo "5. Build context contains all necessary files"
+          elif [ "${{ needs.build.result }}" = "success" ]; then
+            echo "✅ Build completed successfully!"
+            echo "Docker image should be available at:"
+            echo "   ${{ secrets.DOCKERHUB_USERNAME }}/techpost-frontend:latest"
+          fi
