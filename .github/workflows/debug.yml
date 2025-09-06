@@ -1,137 +1,186 @@
-name: Frontend Pipeline with Debug
+name: Debug Frontend Pipeline
 
 on:
   workflow_dispatch:
     inputs:
-      debug_mode:
-        description: 'Enable debug mode'
+      test_secrets_only:
+        description: 'Only test secrets (no build)'
         required: false
         default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
-      build_env:
-        description: 'Build environment'
-        required: false
-        default: 'prod'
-        type: choice
-        options:
-          - 'dev'
-          - 'staging'
-          - 'prod'
-#  push:
-#    branches: [ master, develop ]
-#  pull_request:
-#    branches: [ master, develop ]
+        type: boolean
 
 jobs:
-  debug:
-    if: ${{ github.event.inputs.debug_mode == 'true' || github.event_name != 'workflow_dispatch' }}
+  debug-secrets:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: 🔍 Debug Environment
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Environment Debug
         run: |
           echo "=== GitHub Context ==="
-          echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "SHA: ${{ github.sha }}"
-          echo "Actor: ${{ github.actor }}"
           echo "Repository: ${{ github.repository }}"
-          echo "Workflow: ${{ github.workflow }}"
-          echo "Run ID: ${{ github.run_id }}"
-          echo "Run Number: ${{ github.run_number }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Ref: ${{ github.ref }}"
           
-          echo ""
-          echo "=== Inputs ==="
-          echo "Debug Mode: ${{ github.event.inputs.debug_mode }}"
-          echo "Build Env: ${{ github.event.inputs.build_env }}"
+      - name: 🔐 Secrets Availability Test
+        run: |
+          echo "=== Secrets Check ==="
           
-          echo ""
-          echo "=== Secrets Availability Check ==="
-          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
-            echo "✅ DOCKERHUB_USERNAME: Available (length: ${#DOCKERHUB_USERNAME})"
-            echo "   First 3 chars: ${DOCKERHUB_USERNAME:0:3}***"
+          # Check DOCKERHUB_USERNAME
+          if [ -z "$DOCKERHUB_USERNAME" ]; then
+            echo "❌ DOCKERHUB_USERNAME is not set or empty"
+            SECRET_ERROR=1
           else
-            echo "❌ DOCKERHUB_USERNAME: Not available"
+            echo "✅ DOCKERHUB_USERNAME is available"
+            echo "   Length: ${#DOCKERHUB_USERNAME} characters"
+            echo "   Preview: ${DOCKERHUB_USERNAME:0:3}***"
           fi
           
-          if [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
-            echo "✅ DOCKERHUB_TOKEN: Available (length: ${#DOCKERHUB_TOKEN})"
-            echo "   First 4 chars: ${DOCKERHUB_TOKEN:0:4}***"
+          # Check DOCKERHUB_TOKEN
+          if [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "❌ DOCKERHUB_TOKEN is not set or empty"
+            SECRET_ERROR=1
           else
-            echo "❌ DOCKERHUB_TOKEN: Not available"
+            echo "✅ DOCKERHUB_TOKEN is available"
+            echo "   Length: ${#DOCKERHUB_TOKEN} characters"
+            echo "   Preview: ${DOCKERHUB_TOKEN:0:4}***"
+          fi
+          
+          if [ "$SECRET_ERROR" = "1" ]; then
+            echo ""
+            echo "🔧 Troubleshooting Steps:"
+            echo "1. Check Organization Secrets: Settings > Secrets and variables > Actions"
+            echo "2. Verify Repository has access to Organization secrets"
+            echo "3. Or add secrets directly to Repository: Repository Settings > Secrets and variables > Actions"
+            echo "4. Ensure DOCKERHUB_TOKEN is an Access Token, not a password"
+            exit 1
           fi
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: 🐳 Test Docker Login (Dry Run)
-        if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN }}
+      - name: 🐳 Docker Hub Connection Test
         run: |
-          echo "Testing Docker Hub connectivity..."
-          echo "Username: ${{ secrets.DOCKERHUB_USERNAME }}"
+          echo "=== Docker Hub Connection Test ==="
           
-          # Test without actual login
-          echo "Attempting to ping Docker Hub..."
-          curl -s https://registry-1.docker.io/v2/ || echo "Docker Hub ping failed"
+          # Test connection to Docker Hub
+          echo "Testing connection to Docker Hub registry..."
+          if curl -s --max-time 10 https://registry-1.docker.io/v2/ > /dev/null; then
+            echo "✅ Docker Hub is reachable"
+          else
+            echo "❌ Cannot reach Docker Hub"
+          fi
           
           echo ""
           echo "Docker version:"
-          docker version
+          docker version --format 'Client: {{.Client.Version}}, Server: {{.Server.Version}}'
+
+      - name: 🔑 Docker Login Test
+        run: |
+          echo "=== Docker Login Test ==="
+          echo "Attempting to login to Docker Hub..."
+          
+          if echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin; then
+            echo "✅ Docker login successful!"
+            
+            # Test basic Docker Hub API access
+            echo ""
+            echo "Testing Docker Hub API access..."
+            if docker pull hello-world:latest > /dev/null 2>&1; then
+              echo "✅ Can pull images from Docker Hub"
+              docker rmi hello-world:latest > /dev/null 2>&1
+            else
+              echo "❌ Cannot pull images from Docker Hub"
+            fi
+            
+            echo ""
+            echo "Logging out..."
+            docker logout
+          else
+            echo "❌ Docker login failed!"
+            echo ""
+            echo "🔧 Possible causes:"
+            echo "1. Incorrect username or token"
+            echo "2. Token doesn't have required permissions"
+            echo "3. Account issues (2FA, suspended, etc.)"
+            exit 1
+          fi
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 📁 Project Structure Check
+        run: |
+          echo "=== Project Structure ==="
+          echo "Current directory contents:"
+          ls -la
           
           echo ""
-          echo "Testing login format (will not actually login):"
-          echo "Command that will be executed:"
-          echo "docker login -u \"${{ secrets.DOCKERHUB_USERNAME }}\" --password-stdin"
-
-      - name: 🔧 System Information
-        run: |
-          echo "=== System Information ==="
-          echo "OS: $(uname -a)"
-          echo "Docker: $(docker --version)"
-          echo "Available disk space:"
-          df -h
+          if [ -f "Dockerfile" ]; then
+            echo "✅ Dockerfile exists"
+            echo "Dockerfile preview:"
+            echo "--- START ---"
+            head -15 Dockerfile
+            echo "--- END ---"
+          else
+            echo "❌ Dockerfile not found!"
+          fi
+          
           echo ""
-          echo "Network connectivity test:"
-          ping -c 3 registry-1.docker.io || echo "Ping to Docker Hub failed"
+          if [ -f "package.json" ]; then
+            echo "✅ package.json exists"
+            if command -v jq > /dev/null; then
+              echo "Build scripts:"
+              jq '.scripts' package.json 2>/dev/null || echo "Cannot parse package.json scripts"
+            fi
+          else
+            echo "❌ package.json not found!"
+          fi
 
-  build:
-    needs: debug
-    if: always() && !cancelled()
+  test-build:
+    needs: debug-secrets
+    if: ${{ !inputs.test_secrets_only }}
     uses: ./.github/workflows/build.yml
     with:
       project: techpost
       module: frontend
-      profiles_active: ${{ github.event.inputs.build_env || 'prod' }}
+      profiles_active: prod
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  post-build-debug:
-    if: always() && (github.event.inputs.debug_mode == 'true' || github.event_name != 'workflow_dispatch')
-    needs: build
+  summary:
+    needs: [debug-secrets, test-build]
+    if: always()
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: 📊 Build Results Summary
+      - name: 📊 Debug Summary
         run: |
-          echo "=== Build Results ==="
-          echo "Build job status: ${{ needs.build.result }}"
-          echo "Build job conclusion: ${{ needs.build.conclusion }}"
+          echo "=== Debug Summary ==="
+          echo "Secrets Check: ${{ needs.debug-secrets.result }}"
           
-          if [ "${{ needs.build.result }}" = "failure" ]; then
-            echo "❌ Build failed! Check the logs above for details."
-            echo ""
-            echo "Common issues to check:"
-            echo "1. Docker Hub credentials are correct"
-            echo "2. Repository has access to organization secrets"
-            echo "3. Docker Hub token has sufficient permissions"
-            echo "4. Dockerfile exists and is valid"
-            echo "5. Build context contains all necessary files"
-          elif [ "${{ needs.build.result }}" = "success" ]; then
-            echo "✅ Build completed successfully!"
-            echo "Docker image should be available at:"
-            echo "   ${{ secrets.DOCKERHUB_USERNAME }}/techpost-frontend:latest"
+          if [ "${{ needs.test-build.result }}" != "" ]; then
+            echo "Build Test: ${{ needs.test-build.result }}"
+          else
+            echo "Build Test: Skipped (secrets only mode)"
+          fi
+          
+          echo ""
+          if [ "${{ needs.debug-secrets.result }}" = "success" ]; then
+            echo "✅ All debugging checks passed!"
+            
+            if [ "${{ needs.test-build.result }}" = "success" ]; then
+              echo "✅ Build test also successful!"
+              echo ""
+              echo "Your Docker Hub integration is working correctly."
+              echo "You can now enable the main pipeline with confidence."
+            elif [ "${{ needs.test-build.result }}" = "failure" ]; then
+              echo "❌ Build test failed - check the build logs for details"
+            fi
+          else
+            echo "❌ Debug checks failed - review the logs above for issues"
           fi
